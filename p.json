@@ -1,0 +1,176 @@
+{
+  "as_of": "2026-09-28",
+  "patient": {
+    "id": "demo-ravi-kumar",
+    "name": "Ravi Kumar",
+    "age": 62,
+    "sex": "male"
+  },
+  "last_visit": {
+    "date": "2026-04-01",
+    "type": "General examination of patient (procedure)",
+    "encounter_id": "demo-ravi-kumar-enc-2"
+  },
+  "problems": [
+    {
+      "id": "demo-ravi-kumar-cond-59621000",
+      "code": "59621000",
+      "display": "Essential hypertension (disorder)",
+      "onset": "2013-11-15"
+    },
+    {
+      "id": "demo-ravi-kumar-cond-44054006",
+      "code": "44054006",
+      "display": "Diabetes mellitus type 2 (disorder)",
+      "onset": "2017-09-15"
+    },
+    {
+      "id": "demo-ravi-kumar-cond-433144002",
+      "code": "433144002",
+      "display": "Chronic kidney disease stage 3 (disorder)",
+      "onset": "2024-10-28"
+    },
+    {
+      "id": "demo-ravi-kumar-cond-49436004",
+      "code": "49436004",
+      "display": "Atrial fibrillation (disorder)",
+      "onset": "2025-12-02"
+    }
+  ],
+  "new_conditions": [],
+  "medications": {
+    "active": [
+      {
+        "rxnorm": "1364430",
+        "display": "apixaban",
+        "first_prescribed": "2025-12-12",
+        "fhir_id": "demo-ravi-kumar-med-1364430"
+      },
+      {
+        "rxnorm": "29046",
+        "display": "lisinopril",
+        "first_prescribed": "2014-02-23",
+        "fhir_id": "demo-ravi-kumar-med-29046"
+      },
+      {
+        "rxnorm": "6809",
+        "display": "metformin",
+        "first_prescribed": "2017-12-24",
+        "fhir_id": "demo-ravi-kumar-med-6809"
+      },
+      {
+        "rxnorm": "9997",
+        "display": "spironolactone",
+        "first_prescribed": "2026-05-31",
+        "fhir_id": "demo-ravi-kumar-med-9997"
+      }
+    ],
+    "new_since_last_visit": [
+      {
+        "rxnorm": "9997",
+        "display": "spironolactone",
+        "first_prescribed": "2026-05-31",
+        "fhir_id": "demo-ravi-kumar-med-9997"
+      }
+    ],
+    "stopped_since_last_visit": null
+  },
+  "labs": [
+    {
+      "id": "lab.hba1c",
+      "concept": "hba1c",
+      "latest": {
+        "value": 8.2,
+        "unit": "%",
+        "date": "2026-07-18",
+        "loinc": "4548-4",
+        "fhir_id": "demo-ravi-kumar-obs-hba1c-3"
+      },
+      "latest_out_of_range": true,
+      "measurements": 4,
+      "new_since_last_visit": true,
+      "baseline": {
+        "value": 7.4,
+        "unit": "%",
+        "date": "2026-04-01",
+        "loinc": "4548-4",
+        "fhir_id": "demo-ravi-kumar-obs-hba1c-2"
+      },
+      "change": 0.8,
+      "direction": "up"
+    },
+    {
+      "id": "lab.egfr",
+      "concept": "egfr",
+      "latest": {
+        "value": 38.0,
+        "unit": "mL/min/{1.73_m2}",
+        "date": "2026-06-26",
+        "loinc": "33914-3",
+        "fhir_id": "demo-ravi-kumar-obs-egfr-3"
+      },
+      "latest_out_of_range": true,
+      "measurements": 4,
+      "new_since_last_visit": true,
+      "baseline": {
+        "value": 46.0,
+        "unit": "mL/min/{1.73_m2}",
+        "date": "2026-04-01",
+        "loinc": "33914-3",
+        "fhir_id": "demo-ravi-kumar-obs-egfr-2"
+      },
+      "change": -8.0,
+      "direction": "down"
+    },
+    {
+      "id": "lab.creatinine",
+      "concept": "creatinine",
+      "latest": {
+        "value": 1.9,
+        "unit": "mg/dL",
+        "date": "2026-07-30",
+        "loinc": "2160-0",
+        "fhir_id": "demo-ravi-kumar-obs-creatinine-3"
+      },
+      "latest_out_of_range": true,
+      "measurements": 4,
+      "new_since_last_visit": true,
+      "baseline": {
+        "value": 1.55,
+        "unit": "mg/dL",
+        "date": "2026-04-01",
+        "loinc": "2160-0",
+        "fhir_id": "demo-ravi-kumar-obs-creatinine-2"
+      },
+      "change": 0.35,
+      "direction": "up"
+    },
+    {
+      "id": "lab.potassium",
+      "concept": "potassium",
+      "latest": {
+        "value": 5.2,
+        "unit": "mmol/L",
+        "date": "2026-07-13",
+        "loinc": "2823-3",
+        "fhir_id": "demo-ravi-kumar-obs-potassium-3"
+      },
+      "latest_out_of_range": true,
+      "measurements": 4,
+      "new_since_last_visit": true,
+      "baseline": {
+        "value": 4.7,
+        "unit": "mmol/L",
+        "date": "2026-04-01",
+        "loinc": "2823-3",
+        "fhir_id": "demo-ravi-kumar-obs-potassium-2"
+      },
+      "change": 0.5,
+      "direction": "up"
+    }
+  ],
+  "events_since_last_visit": [],
+  "limitations": [
+    "Medication stop dates are not recorded, so stopped medications are not reported."
+  ]
+}
