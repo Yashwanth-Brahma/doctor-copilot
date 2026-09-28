@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* Class strategy: <html class="dark">, set by lib/theme.ts (and the inline script in index.html
+   so the first paint is already in the right theme). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Every colour is defined once per theme, here. Components use only these tokens
+   (bg-surface, text-fg-muted, border-warn-border, ...), never dark: overrides.
+   Text tokens are checked for WCAG AA (4.5:1) against bg, surface and their soft backgrounds:
+   see src/lib/contrast.test.ts. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f6f7f8;
+  --subtle: #eef0f2;
+  --border: #e1e4e8;
+  --border-strong: #c3c8cf;
+  --fg: #16181c;
+  --fg-muted: #474c55;
+  --fg-subtle: #5d636d;
+
+  --accent: #1f5f9e;
+  --accent-hover: #194d80;
+  --accent-fg: #1a5590;
+  --accent-soft: #eaf2fb;
+  --accent-border: #b3cde9;
+  --on-accent: #ffffff;
+
+  --ok-fg: #146c43;
+  --ok-soft: #eaf7f0;
+  --ok-border: #98d2b3;
+  --warn-fg: #7f4500;
+  --warn-soft: #fff4dc;
+  --warn-border: #e9bb62;
+  --danger-fg: #a11c1c;
+  --danger-soft: #fdeeee;
+  --danger-border: #eeb0b0;
+
+  --stripe-model: #1f5f9e;
+  --stripe-added: #d08300;
+  --stripe-record: #8c929c;
+
+  --highlight: #fff0bf;
+  --highlight-ring: #d9a300;
+  --scroll-thumb: #c9cdd3;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #111317;
+  --surface: #171a1f;
+  --subtle: #21252c;
+  --border: #2b3038;
+  --border-strong: #414854;
+  --fg: #e7e9ec;
+  --fg-muted: #b3b8c1;
+  --fg-subtle: #979ea8;
+
+  --accent: #6ea8e4;
+  --accent-hover: #8dbcec;
+  --accent-fg: #8fbfef;
+  --accent-soft: #15243a;
+  --accent-border: #2c4a6f;
+  --on-accent: #0b1522;
+
+  --ok-fg: #6fd09b;
+  --ok-soft: #10261b;
+  --ok-border: #28563d;
+  --warn-fg: #f1c168;
+  --warn-soft: #2a200d;
+  --warn-border: #6a4d16;
+  --danger-fg: #f39b9b;
+  --danger-soft: #2d1515;
+  --danger-border: #6b2a2a;
+
+  --stripe-model: #6ea8e4;
+  --stripe-added: #e0a53a;
+  --stripe-record: #6f7580;
+
+  --highlight: #3a3011;
+  --highlight-ring: #d4a72c;
+  --scroll-thumb: #3a404a;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-on-accent: var(--on-accent);
+  --color-ok-fg: var(--ok-fg);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-border: var(--ok-border);
+  --color-warn-fg: var(--warn-fg);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-border: var(--warn-border);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-stripe-model: var(--stripe-model);
+  --color-stripe-added: var(--stripe-added);
+  --color-stripe-record: var(--stripe-record);
+  --color-highlight: var(--highlight);
+  --color-highlight-ring: var(--highlight-ring);
+}
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html { font-size: 15.5px; }
+body { @apply bg-bg text-fg antialiased; }
+
+/* thin, theme-matched scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+
+@keyframes flash { from { background-color: var(--highlight); } to { background-color: transparent; } }
+.flash { animation: flash 2.2s ease-out; }
