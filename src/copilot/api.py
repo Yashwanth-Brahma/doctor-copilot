@@ -9,22 +9,28 @@
 
     uv run uvicorn copilot.api:default_app --factory --reload
 
+Public-demo protection (settings in .env, see Guards.from_env): briefings are cached per patient
+per day; each visitor has a per-minute limit; model-backed requests have a daily budget.
+
 The briefing endpoint calls the graph directly, not through MCP: it's our own code calling our
 own functions. MCP is for the agent, which chooses tools at run time (Session 3).
 """
 import json
 import os
+from collections import OrderedDict
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import date
 from typing import Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .briefing.graph import briefing_response, build_briefing_graph
 from .facts.compute import compute_facts
+from .guard import DailyBudget, RateLimiter, client_ip
 
 
 def _age(birth: date | None, today: date) -> int | None:
@@ -33,14 +39,42 @@ def _age(birth: date | None, today: date) -> int | None:
     return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
 
 
+@dataclass
+class Guards:
+    """None = no limit (tests, local dev)."""
+    briefing_rate: RateLimiter | None = None
+    ask_rate: RateLimiter | None = None
+    briefing_budget: DailyBudget | None = None
+    ask_budget: DailyBudget | None = None
+
+    @classmethod
+    def from_env(cls) -> "Guards":
+        def n(name, default):
+            return int(os.environ.get(name, default))
+        return cls(RateLimiter(n("BRIEFINGS_PER_MINUTE", 10)), RateLimiter(n("QUESTIONS_PER_MINUTE", 5)),
+                   DailyBudget(n("DAILY_BRIEFING_LIMIT", 300)), DailyBudget(n("DAILY_QUESTION_LIMIT", 200)))
+
+
+def _check(rate: RateLimiter | None, budget: DailyBudget | None, request: Request, what: str):
+    if rate and not rate.allow(client_ip(request.headers, request.client and request.client.host)):
+        raise HTTPException(429, f"Too many {what} in a minute. Please wait a moment.")
+    if budget and not budget.try_spend():
+        raise HTTPException(429, f"The demo's daily limit for {what} has been reached. Try again tomorrow.")
+
+
 class Ask(BaseModel):
     question: str = Field(min_length=3, max_length=500)
 
 
 def create_app(load_records: Callable[[str], dict | None], list_patients: Callable[[], list[dict]],
                llm=None, today: Callable[[], date] = date.today,
-               compute: Callable = compute_facts, qa_graph=None) -> FastAPI:
-    """qa_graph: an async context manager that yields a compiled Q&A graph (connects to MCP)."""
+               compute: Callable = compute_facts, qa_graph=None, narrator: str | None = None,
+               guards: Guards | None = None) -> FastAPI:
+    """qa_graph: an async context manager that yields a compiled Q&A graph (connects to MCP).
+    narrator: the name shown as author of model-written briefing lines."""
+    guards = guards or Guards()
+    cache: OrderedDict = OrderedDict()              # (patient_id, day) -> briefing response
+    CACHE_SIZE = 500
     app = FastAPI(title="Doctor Copilot")
     app.add_middleware(
         CORSMiddleware,
@@ -60,22 +94,33 @@ def create_app(load_records: Callable[[str], dict | None], list_patients: Callab
                 for p in list_patients()]
 
     @app.get("/patients/{patient_id}/briefing")
-    def briefing(patient_id: str, debug: bool = False):
+    def briefing(patient_id: str, request: Request, debug: bool = False):
         # sync def: FastAPI runs it in a worker thread, so a slow model call
         # doesn't block other requests
+        key = (patient_id, today())
+        if not debug and key in cache:              # written once per patient per day
+            cache.move_to_end(key)
+            return cache[key] | {"cached": True}
+        _check(guards.briefing_rate, guards.briefing_budget, request, "briefings")
         try:
-            state = graph.invoke({"patient_id": patient_id, "today": today()})
+            state = graph.invoke({"patient_id": patient_id, "today": key[1]})
         except LookupError:
             raise HTTPException(404, f"No patient with id '{patient_id}'")
-        return briefing_response(state, debug=debug)
+        response = briefing_response(state, debug=debug, narrator=narrator)
+        if not debug:
+            cache[key] = response
+            while len(cache) > CACHE_SIZE:
+                cache.popitem(last=False)
+        return response | {"cached": False}
 
     @app.post("/patients/{patient_id}/ask")
-    async def ask(patient_id: str, body: Ask):
+    async def ask(patient_id: str, body: Ask, request: Request):
         from .qa.agent import ask_events
         if qa_graph is None:
             raise HTTPException(503, "Q&A agent is not configured")
         if load_records(patient_id) is None:
             raise HTTPException(404, f"No patient with id '{patient_id}'")
+        _check(guards.ask_rate, guards.ask_budget, request, "questions")
 
         async def events():
             try:
@@ -92,7 +137,7 @@ def create_app(load_records: Callable[[str], dict | None], list_patients: Callab
 
 
 def default_app() -> FastAPI:
-    """The real app: Supabase + local MedGemma. Tests call create_app() with fakes instead."""
+    """The real app: Supabase, the narrator from .env, OpenAI agent. Tests use create_app() with fakes."""
     from .db import connect, list_patients, records_loader
 
     def patients():
@@ -109,5 +154,7 @@ def default_app() -> FastAPI:
         async with mcp_tools() as tools:            # one MCP server process per question
             yield build_qa_graph(tools, agent, gate)
 
-    return create_app(records_loader(), patients, qa_graph=qa_graph)
+    from .briefing.narrate import default_llm, narrator_name
+    return create_app(records_loader(), patients, llm=default_llm(), qa_graph=qa_graph,
+                      narrator=narrator_name(), guards=Guards.from_env())
 

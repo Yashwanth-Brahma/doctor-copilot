@@ -100,7 +100,7 @@ def build_briefing_graph(load_records: Callable[[str], dict | None], llm=None,
     return g.compile()
 
 
-def briefing_response(state: dict, debug: bool = False) -> dict:
+def briefing_response(state: dict, debug: bool = False, narrator: str | None = None) -> dict:
     """What the API returns: the text, how it was produced, and the facts behind it.
     debug=True adds every model draft with its violations (why a fallback happened)."""
     attempts = state.get("attempts", [])
@@ -109,6 +109,7 @@ def briefing_response(state: dict, debug: bool = False) -> dict:
         "text": state["text"],
         "status": state["status"],
         "attempts": len(attempts),
+        "narrator": narrator if attempts else None,     # who wrote the model lines; None = no model call
         "added": state["added"],
         "context": state["context"],
         "facts": state["facts"],

@@ -45,3 +45,17 @@ def test_lab_series_since_and_units():
 def test_unknown_lab_lists_what_exists():
     s = get_lab_series(RECORDS, "cholesterol")
     assert "error" in s and "HbA1c" in s["available"]
+
+
+def test_regression_last_visit_has_a_source_to_cite(monkeypatch):
+    # "Has he been to the hospital since the last visit?" was withheld: the answer mentioned
+    # the visit date, but the tool gave no source id for it, so nothing real could be cited.
+    import copilot.tools as tools_module
+    from copilot.qa.check import check_answer
+    from tests.test_verify import FACTS
+    monkeypatch.setattr(tools_module, "compute_facts", lambda *a, **k: FACTS)
+    records = {"patient": {}, "encounters": [], "conditions": [], "medications": [], "observations": []}
+    changes = tools_module.get_changes_since_last_visit(records, None)
+    assert changes["last_visit"]["source"] == "demo-ravi-kumar-enc-2"
+    answer = "There are no hospital visits since the last visit on 2026-04-01 [demo-ravi-kumar-enc-2]."
+    assert check_answer(answer, [changes], "Has he been to the hospital since the last visit?") == []

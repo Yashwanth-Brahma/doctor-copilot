@@ -42,16 +42,30 @@ Rules:
 
 
 def default_llm(temperature: float = 0.0):
-    """The narrator model. NARRATOR_MODEL comes from .env (the name `ollama list` shows).
-    No default: a guessed name failed only when a patient needed the model, so a missing
-    setting now stops the app at start-up instead."""
+    """The narrator model, from .env:
+
+        NARRATOR_PROVIDER=ollama   NARRATOR_MODEL=<name from `ollama list`>   (local MedGemma)
+        NARRATOR_PROVIDER=openai   NARRATOR_MODEL=gpt-4.1-mini               (production)
+
+    The verifier, not the model, is what makes the briefing safe, so the narrator is a setting.
+    No default model name: a guessed name once failed only when a patient needed it.
+    """
     from dotenv import load_dotenv
-    from langchain_ollama import ChatOllama  # imported here so tests don't need Ollama
     load_dotenv()
     model = os.environ.get("NARRATOR_MODEL")
     if not model:
-        raise RuntimeError("NARRATOR_MODEL is not set. Add it to .env, using the name from `ollama list`.")
+        raise RuntimeError("NARRATOR_MODEL is not set. Add it to .env.")
+    if os.environ.get("NARRATOR_PROVIDER", "ollama") == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model, temperature=temperature, timeout=60)
+    from langchain_ollama import ChatOllama  # imported here so tests don't need Ollama
     return ChatOllama(model=model, temperature=temperature)
+
+
+def narrator_name() -> str:
+    """What the UI shows as the author of model-written lines ("MedGemma", "gpt-4.1-mini")."""
+    model = os.environ.get("NARRATOR_MODEL", "")
+    return "MedGemma" if "medgemma" in model.lower() else model
 
 
 def build_messages(ni: dict, attempts: list[dict]) -> list:

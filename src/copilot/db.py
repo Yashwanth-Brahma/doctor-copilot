@@ -11,7 +11,9 @@ TABLES = ("encounters", "conditions", "medications", "observations")
 
 
 def connect():
-    return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+    # prepare_threshold=None: Supabase's pooler (the address Railway can reach) does not
+    # support prepared statements, and psycopg would otherwise start using them.
+    return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row, prepare_threshold=None)
 
 
 def list_patients(conn) -> list[dict]:

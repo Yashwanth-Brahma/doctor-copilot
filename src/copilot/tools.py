@@ -24,6 +24,13 @@ def _point(p: dict | None) -> dict | None:
     return {"value": p["value"], "unit": unit(p["unit"]), "date": p["date"], "source": p["fhir_id"]}
 
 
+def _last_visit(f: dict) -> dict | None:
+    """The last visit carries its encounter id as `source`, like every other value: without it
+    the agent had nothing to cite for the visit date, and a correct answer was withheld."""
+    lv = f["last_visit"]
+    return lv and {"date": lv["date"], "type": clean(lv["type"]), "source": lv["encounter_id"]}
+
+
 def resolve_lab(name: str) -> str | None:
     """'A1c', 'HbA1c', 'hba1c', 'glycated hemoglobin' -> 'hba1c'."""
     n = name.strip().lower()
@@ -38,8 +45,7 @@ def get_patient_summary(records: dict, today: date) -> dict:
     f = _facts(records, today)
     return {
         "patient": {k: f["patient"][k] for k in ("name", "age", "sex")},
-        "last_visit": f["last_visit"] and {"date": f["last_visit"]["date"],
-                                           "type": clean(f["last_visit"]["type"])},
+        "last_visit": _last_visit(f),
         "problems": [{"name": clean(p["display"]), "onset": p["onset"], "source": p["id"]}
                      for p in f["problems"]],
         "active_medications": [{"name": m["display"], "first_prescribed": m["first_prescribed"],
@@ -55,8 +61,7 @@ def get_changes_since_last_visit(records: dict, today: date) -> dict:
     f = _facts(records, today)
     meds = f["medications"]
     return {
-        "last_visit": f["last_visit"] and {"date": f["last_visit"]["date"],
-                                           "type": clean(f["last_visit"]["type"])},
+        "last_visit": _last_visit(f),
         "labs": [{"lab": LAB_NAMES[l["concept"]], "previous": _point(l["baseline"]),
                   "latest": _point(l["latest"]), "change": l["change"],
                   "direction": l["direction"], "latest_out_of_range": l["latest_out_of_range"]}
