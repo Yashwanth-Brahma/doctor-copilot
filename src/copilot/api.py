@@ -78,14 +78,15 @@ def create_app(load_records: Callable[[str], dict | None], list_patients: Callab
     app = FastAPI(title="Doctor Copilot")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(","),
+        allow_origins=os.environ.get("ALLOWED_ORIGINS").split(","),
         allow_methods=["GET", "POST"], allow_headers=["*"],
     )
     graph = build_briefing_graph(load_records, llm=llm, compute=compute)
 
     @app.get("/health")
     def health():
-        return {"ok": True}
+        status = getattr(llm, "status", None)          # narrator with fallback reports its state
+        return {"ok": True, **({"narrator": status()} if status else {})}
 
     @app.get("/patients")
     def patients():

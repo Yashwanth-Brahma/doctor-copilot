@@ -42,30 +42,16 @@ Rules:
 
 
 def default_llm(temperature: float = 0.0):
-    """The narrator model, from .env:
-
-        NARRATOR_PROVIDER=ollama   NARRATOR_MODEL=<name from `ollama list`>   (local MedGemma)
-        NARRATOR_PROVIDER=openai   NARRATOR_MODEL=gpt-4.1-mini               (production)
-
-    The verifier, not the model, is what makes the briefing safe, so the narrator is a setting.
-    No default model name: a guessed name once failed only when a patient needed it.
-    """
-    from dotenv import load_dotenv
-    load_dotenv()
-    model = os.environ.get("NARRATOR_MODEL")
-    if not model:
-        raise RuntimeError("NARRATOR_MODEL is not set. Add it to .env.")
-    if os.environ.get("NARRATOR_PROVIDER", "ollama") == "openai":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=model, temperature=temperature, timeout=60)
-    from langchain_ollama import ChatOllama  # imported here so tests don't need Ollama
-    return ChatOllama(model=model, temperature=temperature)
+    """The narrator, from .env. See narrator_llm.py (local MedGemma, a remote one behind a
+    tunnel with OpenAI as fallback, or OpenAI only)."""
+    from .narrator_llm import build_narrator
+    return build_narrator(temperature)
 
 
 def narrator_name() -> str:
-    """What the UI shows as the author of model-written lines ("MedGemma", "gpt-4.1-mini")."""
-    model = os.environ.get("NARRATOR_MODEL", "")
-    return "MedGemma" if "medgemma" in model.lower() else model
+    """The configured narrator's display name (used when a reply doesn't report its model)."""
+    from .narrator_llm import display_name
+    return display_name(os.environ.get("NARRATOR_MODEL", "")) or ""
 
 
 def build_messages(ni: dict, attempts: list[dict]) -> list:
@@ -121,11 +107,15 @@ def clean_output(raw: str) -> str:
 
 
 def write_and_check(ni: dict, llm, attempts: list[dict]) -> dict:
+    from .narrator_llm import model_of
     t0 = time.perf_counter()
-    raw = llm.invoke(build_messages(ni, attempts)).content
-    text = clean_output(raw)
-    return {"text": text, "raw": raw, "violations": verify(text, ni),
-            "seconds": round(time.perf_counter() - t0, 1)}
+    reply = llm.invoke(build_messages(ni, attempts))
+    text = clean_output(reply.content)
+    meta = getattr(reply, "response_metadata", None) or {}
+    return {"text": text, "raw": reply.content, "violations": verify(text, ni),
+            "seconds": round(time.perf_counter() - t0, 1),
+            "model": model_of(reply),                       # who actually wrote this draft
+            "fallback_from": meta.get("fallback_from")}     # set when the primary was unreachable
 
 
 def next_step(attempts: list[dict]) -> str:

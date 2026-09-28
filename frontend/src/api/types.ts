@@ -89,6 +89,8 @@ export interface Briefing {
   attempts: number;
   /** who wrote the model lines, e.g. "MedGemma"; null when no model was called */
   narrator: string | null;
+  /** set when the preferred narrator (e.g. "MedGemma") was unavailable and `narrator` stood in */
+  narrator_fallback_from: string | null;
   /** true when the API returned a briefing it wrote earlier today */
   cached: boolean;
   added: string[];

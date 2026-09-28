@@ -93,3 +93,17 @@ def test_daily_budget_returns_429_but_cached_briefings_still_work():
     assert c.get("/patients/demo-ravi-kumar/briefing").status_code == 200        # cache: free
     r = c.get("/patients/demo-ravi-kumar/briefing?debug=true")                   # needs the model
     assert r.status_code == 429 and "daily limit" in r.json()["detail"]
+
+
+def test_label_follows_the_model_that_actually_answered():
+    # configured narrator is MedGemma, but the Mac was down and OpenAI wrote the lines
+    from langchain_core.messages import AIMessage
+
+    class Replies:
+        def invoke(self, messages):
+            return AIMessage(GOOD, response_metadata={"model_name": "gpt-4.1-mini",
+                                                      "fallback_from": "hf.co/unsloth/medgemma-4b-it-GGUF:Q5_K_M"})
+    app = create_app(lambda pid: RECORDS, lambda: PATIENTS, llm=Replies(), today=lambda: date(2026, 9, 28),
+                     compute=lambda *a, **k: FACTS, narrator="MedGemma")
+    body = TestClient(app).get("/patients/demo-ravi-kumar/briefing").json()
+    assert body["narrator"] == "gpt-4.1-mini" and body["narrator_fallback_from"] == "MedGemma"

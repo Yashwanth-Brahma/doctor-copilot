@@ -30,6 +30,7 @@ from ..facts.compute import compute_facts
 from .fallback import context_lines, has_changes, no_changes_text
 from .narrate import default_llm, finish, next_step, write_and_check
 from .narrator_input import narrator_input
+from .narrator_llm import display_name
 
 
 class BriefingState(TypedDict, total=False):
@@ -109,7 +110,9 @@ def briefing_response(state: dict, debug: bool = False, narrator: str | None = N
         "text": state["text"],
         "status": state["status"],
         "attempts": len(attempts),
-        "narrator": narrator if attempts else None,     # who wrote the model lines; None = no model call
+        # who wrote the model lines: the model that actually answered, not the configured one
+        "narrator": (display_name(attempts[-1].get("model")) or narrator) if attempts else None,
+        "narrator_fallback_from": display_name(attempts[-1].get("fallback_from")) if attempts else None,
         "added": state["added"],
         "context": state["context"],
         "facts": state["facts"],
@@ -117,5 +120,5 @@ def briefing_response(state: dict, debug: bool = False, narrator: str | None = N
     }
     if debug:
         out["drafts"] = [{"raw": a.get("raw", a["text"]), "violations": a["violations"],
-                          "seconds": a["seconds"]} for a in attempts]
+                          "seconds": a["seconds"], "model": a.get("model")} for a in attempts]
     return out

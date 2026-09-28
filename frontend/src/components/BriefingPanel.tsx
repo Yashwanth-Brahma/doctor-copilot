@@ -71,6 +71,11 @@ export function BriefingPanel({ patient }: { patient: PatientListItem }) {
             {b.cached && <span className="text-xs text-fg-subtle">written earlier today</span>}
           </div>
         )}
+        {b?.narrator && b.narrator_fallback_from && (
+          <p className="mt-1 text-xs text-fg-subtle">
+            {b.narrator_fallback_from} was unavailable, so {b.narrator} wrote these lines. The same checks applied.
+          </p>
+        )}
       </header>
 
       {/* scrolls */}
