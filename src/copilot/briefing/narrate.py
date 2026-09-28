@@ -16,7 +16,7 @@ import os
 import re
 import time
 
-from .fallback import complete_briefing, facts_only_text
+from .fallback import complete_briefing, facts_only_text, has_changes, no_changes_text
 from .verify import verify
 
 MAX_ATTEMPTS = 2
@@ -32,7 +32,7 @@ Write these sentences, in this order, following the patterns exactly:
 3. For EACH item in new_medications, one sentence: "<name> was started on <started>."
 4. For EACH item in new_conditions, one sentence: "<name> was recorded on <onset>."
 5. For EACH item in events_since_last_visit, one sentence: "Hospital or urgent care visit: <type> on <date>."
-Skip a step when its list is empty. Write nothing else.
+Skip a step when its list is empty: never write a hospital or urgent care sentence unless events_since_last_visit has items. Write nothing else.
 
 Rules:
 - Copy every number and date exactly from FACTS. Never calculate anything: no percentages, no differences.
@@ -42,9 +42,16 @@ Rules:
 
 
 def default_llm(temperature: float = 0.0):
+    """The narrator model. NARRATOR_MODEL comes from .env (the name `ollama list` shows).
+    No default: a guessed name failed only when a patient needed the model, so a missing
+    setting now stops the app at start-up instead."""
+    from dotenv import load_dotenv
     from langchain_ollama import ChatOllama  # imported here so tests don't need Ollama
-    return ChatOllama(model=os.environ.get("NARRATOR_MODEL", "medgemma"),
-                      temperature=temperature)
+    load_dotenv()
+    model = os.environ.get("NARRATOR_MODEL")
+    if not model:
+        raise RuntimeError("NARRATOR_MODEL is not set. Add it to .env, using the name from `ollama list`.")
+    return ChatOllama(model=model, temperature=temperature)
 
 
 def build_messages(ni: dict, attempts: list[dict]) -> list:
@@ -130,6 +137,8 @@ def finish(ni: dict, attempts: list[dict], step: str) -> dict:
 
 
 def narrate(ni: dict, llm=None) -> dict:
+    if not has_changes(ni):
+        return {"text": no_changes_text(ni), "status": "no_changes", "added": [], "attempts": []}
     llm = llm or default_llm()
     attempts = []
     while True:

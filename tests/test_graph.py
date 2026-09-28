@@ -4,7 +4,7 @@ import pytest
 
 from copilot.briefing.fallback import facts_only_text
 from copilot.briefing.graph import briefing_response, build_briefing_graph
-from tests.test_verify import FACTS, GOOD, LABS_ONLY, NI, FakeLLM
+from tests.test_verify import CONTEXT, FACTS, GOOD, LABS_ONLY, NI, NOTHING_NEW, FakeLLM
 
 TODAY = date(2026, 9, 28)
 RECORDS = {"patient": {"id": "p1"}, "encounters": [], "conditions": [],
@@ -56,9 +56,17 @@ def test_response_carries_facts_and_limitations():
     assert r["facts"] is FACTS and r["limitations"] == FACTS["limitations"]
 
 
-def test_every_ending_includes_current_meds_and_problems():
+def test_every_ending_includes_context_lines():
     for replies in ([GOOD], [LABS_ONLY], ["eGFR is 8.2.", "eGFR is 8.2."]):
         state, _ = run(replies)
-        assert state["text"].endswith(
-            "Current medications: metformin, spironolactone (new since last visit).\n"
-            "Known problems: Diabetes mellitus type 2, Chronic kidney disease stage 3.")
+        assert state["text"].endswith("\n".join(CONTEXT))
+
+
+def test_graph_nothing_new_skips_the_model():
+    llm = FakeLLM([])                                   # would fail if called
+    graph = build_briefing_graph(lambda pid: RECORDS, llm=llm, compute=lambda *a, **k: NOTHING_NEW)
+    state = graph.invoke({"patient_id": "p1", "today": TODAY})
+    assert state["status"] == "no_changes" and llm.calls == []
+    assert state["text"].startswith("The last visit was on 2026-08-12.")
+    assert "No active medications on record." in state["text"]
+    assert briefing_response(state)["attempts"] == 0

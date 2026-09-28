@@ -56,7 +56,31 @@ def _num(x) -> float:
 
 
 def _words(*terms) -> list:
-    return [re.compile(rf"\b{re.escape(t)}\b", re.I) for t in terms]
+    # (?<!\w)/(?!\w) instead of \b: a name can start or end with a symbol,
+    # e.g. "{24 (drospirenone ...) } Pack [Yaz 28 Day]", where \b never matches.
+    return [re.compile(rf"(?<!\w){re.escape(t)}(?!\w)", re.I) for t in terms if t]
+
+
+DOSE_WORDS = {"oral", "tablet", "tablets", "capsule", "extended", "release", "injectable",
+              "suspension", "solution", "vaginal", "system", "mucosal", "spray", "inert",
+              "ingredients", "topical", "cream", "actuat", "human", "regular", "delayed"}
+
+
+def med_aliases(name: str) -> list[str]:
+    """Names the model may use for a product: the full string, the brand in brackets and its
+    first word, and the first ingredient word. "{24 (drospirenone 3 MG / ...) } Pack
+    [Yaz 28 Day]" -> [full, "Yaz 28 Day", "Yaz", "drospirenone"]."""
+    aliases = [name]
+    for brand in re.findall(r"\[([^\]]+)\]", name):
+        aliases.append(brand.strip())
+        first = brand.split()[0]
+        if len(first) >= 3:
+            aliases.append(first)
+    for w in re.findall(r"[A-Za-z]+", name):
+        if len(w) >= 5 and w.lower() not in DOSE_WORDS and not w.isupper():
+            aliases.append(w)
+            break
+    return list(dict.fromkeys(aliases))
 
 
 def build_entities(ni: dict) -> list[Entity]:
@@ -74,10 +98,10 @@ def build_entities(ni: dict) -> list[Entity]:
         ents.append(e)
 
     for m in ni["new_medications"]:
-        ents.append(Entity("medication", m["name"], _words(m["name"]), dates={m["started"]}))
+        ents.append(Entity("medication", m["name"], _words(*med_aliases(m["name"])), dates={m["started"]}))
     for name in ni.get("active_medications", []):
         if not any(e.name == name for e in ents):
-            ents.append(Entity("medication", name, _words(name)))
+            ents.append(Entity("medication", name, _words(*med_aliases(name))))
 
     for c in ni["new_conditions"]:
         keys = [w for w in re.findall(r"[a-z]+", c["name"].lower())
@@ -111,23 +135,30 @@ NOT_PLAIN = re.compile(r"[{}\[\]`]|\\u[0-9a-f]{4}", re.I)
 
 def check_sentence(s: str, ents: list[Entity], global_dates: set, global_numbers: set) -> list[str]:
     problems = []
-    if NOT_PLAIN.search(s):
-        problems.append("not plain text (JSON, code or escape characters)")
-    if m := INTERPRETATION.search(s):
-        problems.append(f"interpretation word '{m.group(0)}' — describe, don't interpret")
-    if m := VAGUE_DATE.search(s):
-        problems.append(f"vague date reference '{m.group(0)}' — give the date")
-    if m := NON_ISO_DATE.search(s):
-        problems.append(f"date '{m.group(0)}' not in YYYY-MM-DD format")
-
     named = [e for e in ents if any(p.search(s) for p in e.patterns)]
     labs = [e for e in named if e.kind == "lab"]
 
+    # Blank out the names of the things the sentence mentions before any other check:
+    # digits, brackets or words inside a real name ("Yaz 28 Day", "[NuvaRing]",
+    # "Abnormal findings diagnostic imaging") belong to the name, not to the model.
     dates = ISO_DATE.findall(s)
     rest = ISO_DATE.sub(" ", s)
+    for e in named:
+        for p in e.patterns:
+            rest = p.sub(" ", rest)
     for e in labs:                       # a lab's own unit may contain digits
         if e.unit:
             rest = rest.replace(e.unit, " ")
+
+    if NOT_PLAIN.search(rest):
+        problems.append("not plain text (JSON, code or escape characters)")
+    if m := INTERPRETATION.search(rest):
+        problems.append(f"interpretation word '{m.group(0)}' — describe, don't interpret")
+    if m := VAGUE_DATE.search(rest):
+        problems.append(f"vague date reference '{m.group(0)}' — give the date")
+    if m := NON_ISO_DATE.search(rest):
+        problems.append(f"date '{m.group(0)}' not in YYYY-MM-DD format")
+
     rest = NAMED_NUMBER.sub(" ", rest)
     numbers = [(m.group(0), m.end()) for m in NUMBER.finditer(rest)]
 
@@ -173,7 +204,7 @@ def check_sentence(s: str, ents: list[Entity], global_dates: set, global_numbers
         else:
             problems.append(f"value {n} is not in the facts")
 
-    if NORMAL_CLAIM.search(s) and any(e.out_of_range for e in labs):
+    if NORMAL_CLAIM.search(rest) and any(e.out_of_range for e in labs):
         problems.append("calls an out-of-range result normal")
     return problems
 
@@ -231,8 +262,12 @@ def verify(text: str, ni: dict) -> list[dict]:
     global_dates = {ni["as_of"]} | ({ni["last_visit"]["date"]} if ni["last_visit"] else set())
     age = (ni.get("patient") or {}).get("age")
     global_numbers = {_num(age)} if age is not None else set()
-    violations = []
+    violations, seen = [], set()
     for s in split_sentences(text):
+        if s in seen:
+            violations.append({"sentence": s, "problem": "repeated sentence"})
+            continue
+        seen.add(s)
         for p in check_sentence(s, ents, global_dates, global_numbers):
             violations.append({"sentence": s, "problem": p})
     for _, label in missing:

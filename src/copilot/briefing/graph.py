@@ -1,6 +1,8 @@
 """The briefing as a LangGraph graph.
 
-    load ─► compute ─► write ──(clean)──────────────────────► accept ───► END
+    load ─► compute ─(nothing changed)─────────────────────► no_changes ─► END  (no model call)
+                  │
+                  └──► write ──(clean)──────────────────────► accept ───► END
                          ▲  ├─(only left things out)──────────► complete ─► END
                          └──┤ (wrong content, 1st attempt)
                             └─(wrong content, 2nd attempt)────► fallback ─► END
@@ -25,7 +27,7 @@ from typing import Annotated, Callable, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from ..facts.compute import compute_facts
-from .fallback import context_lines
+from .fallback import context_lines, has_changes, no_changes_text
 from .narrate import default_llm, finish, next_step, write_and_check
 from .narrator_input import narrator_input
 
@@ -40,7 +42,7 @@ class BriefingState(TypedDict, total=False):
     text: str
     added: list[str]                                  # sentences code added to the model's draft
     context: list[str]                                # current meds + problems, written by code
-    status: str      # verified | verified_after_retry | verified_with_additions | fallback
+    status: str      # verified | verified_after_retry | verified_with_additions | fallback | no_changes
 
 
 def build_briefing_graph(load_records: Callable[[str], dict | None], llm=None,
@@ -62,6 +64,14 @@ def build_briefing_graph(load_records: Callable[[str], dict | None], llm=None,
     def write(state):
         return {"attempts": [write_and_check(state["ni"], llm, state.get("attempts", []))]}
 
+    def after_compute(state):
+        return "write" if has_changes(state["ni"]) else "no_changes"
+
+    def no_changes(state):
+        context = context_lines(state["facts"])
+        return {"text": "\n".join([no_changes_text(state["ni"]), *context]),
+                "status": "no_changes", "added": [], "context": context, "attempts": []}
+
     def after_write(state):
         return next_step(state["attempts"])
 
@@ -81,22 +91,30 @@ def build_briefing_graph(load_records: Callable[[str], dict | None], llm=None,
         g.add_node(step, ending(step))
     g.add_edge(START, "load")
     g.add_edge("load", "compute")
-    g.add_edge("compute", "write")
+    g.add_node("no_changes", no_changes)
+    g.add_conditional_edges("compute", after_compute, ["write", "no_changes"])
+    g.add_edge("no_changes", END)
     g.add_conditional_edges("write", after_write, ["accept", "complete", "write", "fallback"])
     for step in ("accept", "complete", "fallback"):
         g.add_edge(step, END)
     return g.compile()
 
 
-def briefing_response(state: dict) -> dict:
-    """What the API returns: the text, how it was produced, and the facts behind it."""
-    return {
+def briefing_response(state: dict, debug: bool = False) -> dict:
+    """What the API returns: the text, how it was produced, and the facts behind it.
+    debug=True adds every model draft with its violations (why a fallback happened)."""
+    attempts = state.get("attempts", [])
+    out = {
         "patient_id": state["patient_id"],
         "text": state["text"],
         "status": state["status"],
-        "attempts": len(state["attempts"]),
+        "attempts": len(attempts),
         "added": state["added"],
         "context": state["context"],
         "facts": state["facts"],
         "limitations": state["facts"]["limitations"],
     }
+    if debug:
+        out["drafts"] = [{"raw": a.get("raw", a["text"]), "violations": a["violations"],
+                          "seconds": a["seconds"]} for a in attempts]
+    return out

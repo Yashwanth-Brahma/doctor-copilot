@@ -6,7 +6,7 @@ The same sentence patterns the prompt asks MedGemma for. Used two ways:
 
 Tests prove both always pass the verifier.
 """
-from .narrator_input import clean
+from .narrator_input import LAB_NAMES, clean, unit
 from .verify import missing_items, split_sentences
 
 
@@ -80,10 +80,27 @@ def facts_only_text(ni: dict) -> str:
     return "\n".join(lines)
 
 
+def has_changes(ni: dict) -> bool:
+    return any(ni[k] for k in ("labs_with_new_results", "new_medications",
+                               "new_conditions", "events_since_last_visit"))
+
+
+def no_changes_text(ni: dict) -> str:
+    """Nothing to narrate, so no model call: code says so directly."""
+    if ni["last_visit"] is None:
+        return "No previous clinic visit on record, so there is nothing to compare."
+    return (f"The last visit was on {ni['last_visit']['date']}.\n"
+            "No new lab results, medications, conditions or hospital visits since then.")
+
+
+def _range_word(flag: bool | None) -> str:
+    return {True: "out of range", False: "in range", None: "no reference range"}[flag]
+
+
 def context_lines(facts: dict) -> list[str]:
-    """What the patient has and takes right now. Written by code from the facts, never by
-    the model: when these lists were in the model's input it listed them and skipped the
-    new medication. The doctor still reads them as part of the briefing."""
+    """What the patient has and takes right now, written by code from the facts, never by the
+    model (when these lists were in the model's input it listed them and skipped the new
+    medication). Empty lists are said out loud: "no medications" must not look like missing data."""
     meds = facts["medications"]
     new = {m["display"] for m in meds["new_since_last_visit"] or []}
     lines = []
@@ -91,6 +108,29 @@ def context_lines(facts: dict) -> list[str]:
         names = [m["display"] + (" (new since last visit)" if m["display"] in new else "")
                  for m in sorted(meds["active"], key=lambda m: m["display"])]
         lines.append("Current medications: " + ", ".join(names) + ".")
+    else:
+        lines.append("No active medications on record.")
+
+    # Onset year shown so a condition the record never closed (e.g. "Sepsis" from 2007)
+    # can be judged by the doctor instead of silently hidden.
     if facts["problems"]:
-        lines.append("Known problems: " + ", ".join(clean(p["display"]) for p in facts["problems"]) + ".")
+        lines.append("Known problems: " + ", ".join(
+            f"{clean(p['display'])} (since {p['onset'][:4]})" if p.get("onset") else clean(p["display"])
+            for p in facts["problems"]) + ".")
+    else:
+        lines.append("No known problems on record.")
+
+    # Latest values of labs that have NO new result (the new ones are in the narrative already).
+    older = [l for l in facts["labs"] if l["new_since_last_visit"] is not True and l["latest"]]
+    if older:
+        lines.append("Other latest results: " + "; ".join(_latest_result(l) for l in older) + ".")
     return lines
+
+
+def _latest_result(lab: dict) -> str:
+    """'HbA1c 6.01% (2026-08-12, out of range)'"""
+    p = lab["latest"]
+    u = unit(p["unit"])
+    sep = "" if u == "%" else " "
+    name = LAB_NAMES.get(lab["concept"], lab["concept"])
+    return f"{name} {_fmt(p['value'])}{sep}{u} ({p['date']}, {_range_word(lab['latest_out_of_range'])})"

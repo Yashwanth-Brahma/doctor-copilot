@@ -256,8 +256,61 @@ def test_regression_escaped_superscript_is_not_a_number():
 
 # --- context lines (current meds + problems, written by code) --------------------------
 
-def test_context_lines_show_current_meds_and_problems():
-    assert context_lines(FACTS) == [
-        "Current medications: metformin, spironolactone (new since last visit).",
-        "Known problems: Diabetes mellitus type 2, Chronic kidney disease stage 3.",
+CONTEXT = [
+    "Current medications: metformin, spironolactone (new since last visit).",
+    "Known problems: Diabetes mellitus type 2 (since 2017), Chronic kidney disease stage 3 (since 2024).",
+    "Other latest results: Glucose 110 mg/dL (2025-11-02, out of range).",
+]
+
+
+def test_context_lines_show_current_meds_problems_and_older_results():
+    assert context_lines(FACTS) == CONTEXT
+
+
+# A real Synthea patient (2026-09-28): last visit 2026-08-12, nothing since, no medications,
+# a never-resolved "Sepsis" from 2007, labs drawn only at the last visit.
+NOTHING_NEW = {
+    "as_of": "2026-09-28",
+    "patient": {"id": "syn-1", "name": "Ann", "age": 46, "sex": "female"},
+    "last_visit": {"date": "2026-08-12", "type": "General examination of patient (procedure)",
+                   "encounter_id": "e1"},
+    "problems": [{"id": "c1", "code": "91302008", "display": "Sepsis (disorder)", "onset": "2007-03-09"},
+                 {"id": "c2", "code": "714628002", "display": "Prediabetes (finding)", "onset": "2026-08-12"}],
+    "new_conditions": [],
+    "medications": {"active": [], "new_since_last_visit": [], "stopped_since_last_visit": None},
+    "labs": [
+        {"id": "lab.hba1c", "concept": "hba1c", "measurements": 1, "baseline": None,
+         "latest": {"value": 6.01, "unit": "%", "date": "2026-08-12", "loinc": "4548-4", "fhir_id": "o1"},
+         "latest_out_of_range": True, "new_since_last_visit": False, "change": None, "direction": None},
+        {"id": "lab.glucose", "concept": "glucose", "measurements": 1, "baseline": None,
+         "latest": {"value": 79.73, "unit": "mg/dL", "date": "2026-08-12", "loinc": "2339-0", "fhir_id": "o2"},
+         "latest_out_of_range": None, "new_since_last_visit": False, "change": None, "direction": None},
+    ],
+    "events_since_last_visit": [],
+    "limitations": [],
+}
+
+
+def test_regression_nothing_new_never_calls_the_model():
+    class Boom:
+        def invoke(self, messages):
+            raise AssertionError("model must not be called when nothing changed")
+    out = narrate(narrator_input(NOTHING_NEW), llm=Boom())
+    assert out["status"] == "no_changes"
+    assert out["text"] == ("The last visit was on 2026-08-12.\n"
+                           "No new lab results, medications, conditions or hospital visits since then.")
+
+
+def test_regression_empty_lists_and_old_problems_are_spelled_out():
+    assert context_lines(NOTHING_NEW) == [
+        "No active medications on record.",
+        "Known problems: Sepsis (since 2007), Prediabetes (since 2026).",
+        "Other latest results: HbA1c 6.01% (2026-08-12, out of range); "
+        "Glucose 79.73 mg/dL (2026-08-12, no reference range).",
     ]
+
+
+def test_no_previous_visit_says_nothing_to_compare():
+    facts = NOTHING_NEW | {"last_visit": None}
+    out = narrate(narrator_input(facts), llm=None)
+    assert out["text"] == "No previous clinic visit on record, so there is nothing to compare."
